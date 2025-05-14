@@ -1,7 +1,7 @@
 # =============================================================================
-#  Alin's Ultimate Z‑Shell — v10 (Mint 21 · May 2025)
+#  Alin's Ultimate Z‑Shell — v10.1 (Mint 21 · May 2025)
 # =============================================================================
-# Focus      : ⚡ instant‑prompt • async plugins • modern CLI • AI helpers
+# Focus      : ⚡ instant‑prompt • async plugins • modern CLI • AI helpers • performance
 # Plugin mgr : zinit (lazy via wait ice)
 # Prompt     : powerlevel10k (instant‑prompt suppressed warnings)
 # -----------------------------------------------------------------------------
@@ -25,6 +25,8 @@ fi
 source "$ZINIT_HOME/zinit.zsh"
 
 ### 2 ▸ Core environment #####################################################
+# Skip global compinit when using zinit (reduces startup time)
+skip_global_compinit=1
 export TERM="xterm-256color"
 export EDITOR="windsurf --wait"; export VISUAL="$EDITOR"
 export PAGER="bat --style=plain --paging=always --theme='Nord'"
@@ -33,7 +35,8 @@ export MANPAGER="sh -c 'col -bx | bat -l man -p'"; export MANROFFOPT="-c"
 HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 HISTSIZE=50000; SAVEHIST=20000
 setopt share_history append_history inc_append_history hist_verify \
-       hist_expire_dups_first hist_reduce_blanks hist_fcntl_lock hist_find_no_dups
+       hist_expire_dups_first hist_reduce_blanks hist_fcntl_lock hist_find_no_dups \
+       hist_ignore_all_dups hist_save_no_dups
 setopt auto_cd auto_pushd pushd_ignore_dups auto_remove_slash auto_resume \
        notify long_list_jobs extended_glob
 
@@ -70,8 +73,16 @@ zinit light hlissner/zsh-autopair
 zinit ice wait"0.4"
 zinit light zsh-users/zsh-completions
 
-# atuin history
-command -v atuin &>/dev/null && eval "$(atuin init zsh --disable-up-arrow)"
+# atuin history with better configuration
+if command -v atuin &>/dev/null; then
+  export ATUIN_NOBIND="true"
+  eval "$(atuin init zsh)"
+  bindkey '^r' _atuin_search_widget
+  # Don't store sensitive commands in atuin history
+  export ATUIN_FILTER_COMMANDS="aws .* --profile|aws .* --access-key|password|secret|token|api.?key|credential"
+  # Use SQLite mode for better performance
+  export ATUIN_DB_IMPLEMENTATION="sqlite"
+fi
 
 ### 4 ▸ Completion ###########################################################
 autoload -Uz compinit && compinit -i -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/compdump-$ZSH_VERSION"
@@ -99,8 +110,47 @@ fi
 export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
 export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git'
 export FZF_DEFAULT_OPTS='--ansi --height 40% --layout=reverse --border --preview "bat --color=always --style=numbers {} | head -120"'
+# Enhanced fzf file finder with preview
+function ff() {
+  local file
+  file=$(fzf --preview 'bat --style=numbers --color=always --line-range :500 {}')
+  if [[ -n "$file" ]]; then
+    $EDITOR "$file"
+  fi
+}
 
 ### 7 ▸ Helper functions #####################################################
+# Universal project finder (compatible with zoxide)
+function pj() {
+  local dir
+  dir=$(find ~/projects ~/work ~/github -maxdepth 2 -type d -name ".git" 2>/dev/null | 
+        sed 's/\/\.git$//' | sort | fzf --preview "ls -la {}")
+  if [[ -d "$dir" ]]; then
+    cd "$dir" || return
+  fi
+}
+
+# Extract various archive formats
+function extract() {
+  if [ -f $1 ] ; then
+    case $1 in
+      *.tar.bz2)   tar xjf $1     ;;
+      *.tar.gz)    tar xzf $1     ;;
+      *.bz2)       bunzip2 $1     ;;
+      *.rar)       unrar e $1     ;;
+      *.gz)        gunzip $1      ;;
+      *.tar)       tar xf $1      ;;
+      *.tbz2)      tar xjf $1     ;;
+      *.tgz)       tar xzf $1     ;;
+      *.zip)       unzip $1       ;;
+      *.Z)         uncompress $1  ;;
+      *.7z)        7z x $1        ;;
+      *)           echo "'$1' cannot be extracted" ;;
+    esac
+  else
+    echo "'$1' is not a valid file"
+  fi
+}
 mkcd() { mkdir -p "$1" && cd "$1"; }
 serve() { python3 -m http.server "${1:-9000}"; }
 please() { sudo $(fc -ln -1); }
@@ -418,6 +468,13 @@ command -v direnv  &>/dev/null && eval "$(direnv hook zsh)"
 [[ -f ~/.fzf.zsh ]] && source ~/.fzf.zsh
 
 ### 12 ▸ Local overrides ####################################################
+# Profile zsh startup time (uncomment to use)
+# zsh-time() { time zsh -i -c exit; }
+
+# Explain command using your AI function
+explain() {
+  _gem_call "Explain this shell command in detail: $*"
+}
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
 ### 13 ▸ Powerlevel10k ######################################################
