@@ -1,6 +1,5 @@
-Below is a ready‑to‑publish **README.md** you can drop into your GitHub repo. It explains what the config does, how to install it, and why each component is there, with links you can trust.
-
----
+THIS is my attempt at Creating a lightweight and powerful config for zsh for the average user.
+Especially useful for lifelong windows users transitioning to linux
 
 ## Alin’s Ultimate Z‑Shell (v6)
 
