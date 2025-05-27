@@ -12,7 +12,12 @@
 # -----------------------------------------------------------------------------
 
 ### 0 ▸ Instant prompt #######################################################
+# Ensure quiet operation with no warning messages
 typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
+
+# Create necessary directories silently
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh" 2>/dev/null
+
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
@@ -51,9 +56,16 @@ zinit light romkatv/powerlevel10k
 zinit ice wait"0.3"
 zinit light zdharma-continuum/fast-syntax-highlighting
 
-# Autosuggestions
-zinit ice wait"0.2" atload"ZSH_AUTOSUGGEST_USE_ASYNC=1"
+# Autosuggestions - loading early without delay for instant availability
+zinit ice lucid atload"!_zsh_autosuggest_start"
 zinit light zsh-users/zsh-autosuggestions
+
+# Autosuggest configuration
+export ZSH_AUTOSUGGEST_USE_ASYNC=1
+export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=244"
+export ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+export ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+export ZSH_AUTOSUGGEST_MANUAL_REBIND=1
 
 # fzf binary + bindings
 zinit ice wait"1" as"program" from"gh-r" pick"fzf"
@@ -73,29 +85,104 @@ zinit light hlissner/zsh-autopair
 zinit ice wait"0.4"
 zinit light zsh-users/zsh-completions
 
-# atuin history with better configuration
-if command -v atuin &>/dev/null; then
-  export ATUIN_NOBIND="true"
-  eval "$(atuin init zsh)"
-  bindkey '^r' _atuin_search_widget
-  # Don't store sensitive commands in atuin history
-  export ATUIN_FILTER_COMMANDS="aws .* --profile|aws .* --access-key|password|secret|token|api.?key|credential"
-  # Use SQLite mode for better performance
-  export ATUIN_DB_IMPLEMENTATION="sqlite"
-fi
+# Enhanced history search (no atuin required)
+# Bind up arrow to history search
+autoload -U up-line-or-beginning-search
+autoload -U down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey "^[[A" up-line-or-beginning-search
+bindkey "^[[B" down-line-or-beginning-search
+
+# Advanced history search with fzf
+function fzf_history() {
+  BUFFER=$(history -n -r 1 | fzf --no-sort --tac --query "$BUFFER")
+  CURSOR=$#BUFFER
+  zle reset-prompt
+}
+zle -N fzf_history
+bindkey '^r' fzf_history
 
 ### 4 ▸ Completion ###########################################################
-autoload -Uz compinit && compinit -i -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/compdump-$ZSH_VERSION"
+# Optimize compinit with caching based on file modification times
+autoload -Uz compinit
+
+# Set path for compdump file
+compinit_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/compdump-$ZSH_VERSION"
+
+# Check if compdump is older than 24 hours
+if [[ -f "$compinit_cache" && $(find "$compinit_cache" -mtime +1 2>/dev/null) ]]; then
+  # Compinit once every 24 hours
+  compinit -i -d "$compinit_cache"
+else
+  # Quick startup: read cached dump if it exists
+  compinit -C -i -d "$compinit_cache"
+fi
 
 ### 5 ▸ Modern CLI aliases ###################################################
 alias rm='trash-put'
-if command -v eza &>/dev/null; then
-  alias ls='eza --icons --git --group-directories-first --sort=type'
+# Enhanced color scheme for ls (fish-like colors)
+# Define vivid colors for different file types
+eval "$(dircolors -b 2>/dev/null || true)"
+export LS_COLORS="$LS_COLORS:di=1;34:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43"
+
+# Fish-like directory listings with enhanced colors and columnar display
+ls() {
+  # Use vivid colors but maintain columnar display
+  command ls -CF --group-directories-first --color=always "$@"
+}
+
+# Detailed listing - uses function for consistent API
+ll() {
+  if command -v eza &>/dev/null; then
+    eza --long --color=always --icons --group-directories-first --sort=type --header --git "$@"
+  elif command -v exa &>/dev/null; then
+    exa --long --color=always --icons --group-directories-first --sort=type --header --git "$@"
+  else
+    command ls -la --color=auto "$@"
+  fi
+}
+
+# Tree view for directories
+lt() {
+  if command -v eza &>/dev/null; then
+    eza --tree --level=2 --color=always --icons --group-directories-first "$@"
+  elif command -v exa &>/dev/null; then
+    exa --tree --level=2 --color=always --icons --group-directories-first "$@"
+  else
+    # Poor man's tree with find and ls
+    find . -maxdepth 2 -type d | sort | sed -e 's;[^/]*/;|____;g;s;____|; |;g'
+  fi
+}
+
+# Additional ls variants
+alias la='ls -a'
+alias ldir='ls -d */'
+
+# Enhanced bat configuration with fallback
+if command -v bat &>/dev/null; then
+  # Initialize bat cache for performance
+  export BAT_CACHE_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/bat"
+  [[ ! -d "$BAT_CACHE_PATH" ]] && mkdir -p "$BAT_CACHE_PATH"
+  
+  # Use bat with consistent theme and settings
+  export BAT_THEME="Nord"
+  export BAT_STYLE="plain"
+  
+  # Replace cat with bat but keep cat available as original-cat
+  alias cat='bat --style=$BAT_STYLE --paging=never'
+  alias original-cat='\cat'
+  
+  # Add useful bat variants
+  alias batl='bat --style=numbers --line-range :500'
+  alias bats='bat --style=plain,header,grid'
+  alias batg='bat --style=grid,header'
 else
-  alias ls='ls --color=auto -F --group-directories-first'
+  # If bat isn't available, regular cat works fine
+  alias batl='cat'
+  alias bats='cat'
+  alias batg='cat'
 fi
-alias ll='ls -alh'
-alias cat='bat --style=plain --paging=never'
 command -v procs &>/dev/null && alias ps='procs --tree --sortd cpu'
 command -v erd   &>/dev/null && alias tree='erd --icons'
 command -v sd    &>/dev/null && alias replace='sd'
@@ -110,6 +197,21 @@ fi
 export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
 export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git'
 export FZF_DEFAULT_OPTS='--ansi --height 40% --layout=reverse --border --preview "bat --color=always --style=numbers {} | head -120"'
+
+# Enhanced fzf keybindings for better productivity
+# Ctrl+T: Search for files and paste selection to commandline
+# Alt+C: Navigate directories with interactive selection
+# Ctrl+R: Search history with enhanced preview
+if [ -f ~/.fzf.zsh ]; then
+  # Add preview for history search
+  export FZF_CTRL_R_OPTS="--preview 'echo {}' --preview-window down:3:hidden:wrap --bind '?:toggle-preview'"
+  
+  # Add preview for Alt+C directory search
+  export FZF_ALT_C_OPTS="--preview 'ls -l {}'"
+  
+  # Enhanced file search with enter, tab, and ctrl+space bindings
+  export FZF_CTRL_T_OPTS="--bind 'ctrl-space:toggle+up,space:toggle+up' --preview-window right:60%"
+fi
 # Enhanced fzf file finder with preview
 function ff() {
   local file
@@ -440,24 +542,19 @@ px() {
 # --- END AI HELPERS ---------------------------------------------------
 
 # === ZINIT SECTION ==========================================================
-# Initialize Zinit (plugin manager)
-ZINIT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
-if [[ ! -d "$ZINIT_HOME" ]]; then
-  command git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
-  echo "Zinit cloned. Please restart your shell or source ~/.zshrc"
-else
-  source "${ZINIT_HOME}/zinit.zsh"
-fi
+# Note: Zinit is already initialized at the top of this file
 
-# Load Zsh's completion system
-# These are now conditional, only loading if zinit itself loaded successfully
-if (( $+functions[zinit] )); then
-  autoload -Uz compinit && compinit
-  # Load and initialize completion system for zinit itself
-  # zinit cdreplay -q # This was causing issues, let's see if compinit is enough
-else
-  echo "Zinit not loaded. Completions might be affected." >&2
-fi
+# Better tab completion menu with color support
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' # case insensitive
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '%F{yellow}-- %d --%f'
+zstyle ':completion:*:warnings' format '%F{red}No matches for:%f %d'
+
+# Cache completions for faster startup
+zstyle ':completion::complete:*' use-cache on
+zstyle ':completion::complete:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/compcache"
 
 ### 10 ▸ Secrets ############################################################
 [[ -f ~/.secrets.zsh ]] && source ~/.secrets.zsh
@@ -467,9 +564,56 @@ command -v zoxide &>/dev/null && eval "$(zoxide init zsh --cmd j)"
 command -v direnv  &>/dev/null && eval "$(direnv hook zsh)"
 [[ -f ~/.fzf.zsh ]] && source ~/.fzf.zsh
 
-### 12 ▸ Local overrides ####################################################
-# Profile zsh startup time (uncomment to use)
-# zsh-time() { time zsh -i -c exit; }
+### 12 ▸ Performance & productivity enhancements ############################
+# Zsh profiling tools
+zsh-time() { time zsh -i -c exit; }
+
+# Detailed zsh profiling (uncomment to run on startup)
+# zmodload zsh/zprof
+
+# Auto-notify on long-running commands (notify when command completes if it took more than 30 seconds)
+autoload -Uz add-zsh-hook
+
+ZSH_COMMAND_TIME_MIN_SECONDS=30
+ZSH_COMMAND_TIME_EXCLUDE=("vim" "nano" "less" "man" "more" "tail" "bat" "ssh" "top" "htop")
+
+command_time_preexec() {
+  timer=${timer:-$SECONDS}
+  COMMAND_TIME_CMD=${1}
+  COMMAND_TIME_START=$(date +%s)
+}
+
+command_time_precmd() {
+  if [ $timer ]; then
+    timer_show=$(($SECONDS - $timer))
+    if [ -n "$COMMAND_TIME_CMD" ] && [ $timer_show -ge $ZSH_COMMAND_TIME_MIN_SECONDS ]; then
+      # Check if command is excluded
+      for exclude in ${ZSH_COMMAND_TIME_EXCLUDE[@]}; do
+        if [[ "$COMMAND_TIME_CMD" == *"$exclude"* ]]; then
+          return
+        fi
+      done
+      notify-send "Command completed after ${timer_show}s" "$COMMAND_TIME_CMD" 2>/dev/null || true
+    fi
+    unset timer
+    unset COMMAND_TIME_CMD
+    unset COMMAND_TIME_START
+  fi
+}
+
+# Only add hooks if notify-send is available
+if command -v notify-send &>/dev/null; then
+  add-zsh-hook preexec command_time_preexec
+  add-zsh-hook precmd command_time_precmd
+fi
+
+# Clipboard integration
+if command -v xclip &>/dev/null; then
+  copy() { xclip -selection clipboard -in "$@"; }
+  paste() { xclip -selection clipboard -out; }
+  # Copy the last command
+  alias copycommand='fc -ln -1 | copy'
+fi
 
 # Explain command using your AI function
 explain() {
@@ -483,3 +627,13 @@ explain() {
 # =============================================================================
 # End of Alin's Ultimate Z-Shell v10 — AI restored & prompt clean
 # =============================================================================
+
+# Ensure consistent history management - either use atuin or fzf_history, not both
+if [[ -f "$HOME/.atuin/bin/env" ]]; then
+  . "$HOME/.atuin/bin/env"
+  # Configure atuin to not conflict with fzf_history binding
+  export ATUIN_NOBIND="true"
+  eval "$(atuin init zsh)"
+  # Use atuin with custom keybinding to avoid conflict
+  bindkey '^s' _atuin_search_widget
+fi
