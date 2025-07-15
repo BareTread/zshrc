@@ -1,11 +1,11 @@
 #!/bin/bash
 # =============================================================================
-# Ultimate Zsh Installation Script for Linux Mint
+# Enhanced Zsh Installation Script for Linux Mint
 # =============================================================================
 
 set -e  # Exit on error
 
-echo "🚀 Installing Ultimate Zsh Configuration for Linux Mint..."
+echo "🚀 Installing Enhanced Zsh Configuration for Linux Mint..."
 echo "=================================================="
 
 # Update package list
@@ -26,7 +26,8 @@ sudo apt install -y \
     trash-cli \
     xclip \
     neovim \
-    python3-pip
+    python3-pip \
+    p7zip-full
 
 # Install optional but recommended packages (continue on error)
 echo "📦 Installing optional packages..."
@@ -38,8 +39,8 @@ if [[ -f ~/.zshrc ]]; then
     cp ~/.zshrc ~/.zshrc.backup.$(date +%Y%m%d_%H%M%S)
 fi
 
-# Download the ultimate .zshrc
-echo "📥 Downloading Ultimate Zsh Configuration..."
+# Download the enhanced .zshrc
+echo "📥 Downloading Enhanced Zsh Configuration..."
 curl -fsSL https://raw.githubusercontent.com/yourusername/zshrc/main/.zshrc -o ~/.zshrc
 
 # Create necessary directories
@@ -61,8 +62,7 @@ cat > ~/.secrets.zsh.template << 'EOF'
 # This file should NOT be committed to version control
 
 # AI API Keys
-export GEMINI_API_KEY='your-gemini-api-key-here'
-export OPENAI_API_KEY='your-openai-api-key-here'
+export PERPLEXITY_API_KEY='your-perplexity-api-key-here'
 
 # Other secrets
 # export GITHUB_TOKEN='your-github-token-here'
@@ -100,7 +100,7 @@ echo ""
 echo "Useful commands to try:"
 echo "- ff         : Find files with preview"
 echo "- pj         : Jump to projects"
-echo "- ai 'hello' : Test AI assistant"
+echo "- px 'hello' : Test AI assistant"
 echo "- zsh-time   : Check startup performance"
 echo ""
-echo "Enjoy your new Ultimate Zsh! 🎉"
+echo "Enjoy your new Enhanced Zsh! 🎉"
